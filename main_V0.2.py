@@ -3,23 +3,29 @@ import sys
 import subprocess
 import time
 from flask import Flask, request
+from threading import Thread
 
-
+def run_command(command):
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"Command failed: {command}\n{result.stderr}")
+        sys.exit(1)
+    return result.stdout
 
 # Check if 'wifiset' file exists
 if os.path.exists('wifiset'):
     with open('wifiset', 'r') as f:
         lines = f.readlines()
+        if len(lines) < 2:
+            sys.exit("Invalid 'wifiset' file.")
         ssid = lines[0].strip()
         password = lines[1].strip()
         
     # Connect to the WiFi network using saved credentials
     time.sleep(5)  # Wait for 5 seconds before attempting to connect
-    subprocess.run(['nmcli', 'device', 'wifi', 'connect', ssid, 'password', password])
+    run_command(['nmcli', 'device', 'wifi', 'connect', ssid, 'password', password])
     sys.exit("File 'wifiset' exists. Connected to the saved WiFi network.")
 else:
-    
-
     # Create Flask app
     app = Flask(__name__)
 
@@ -45,23 +51,22 @@ else:
             f.write(f'{ssid}\n{password}\n')
         
         # Stop the access point
-        subprocess.run(['nmcli', 'radio', 'wifi', 'off'])
+        run_command(['nmcli', 'radio', 'wifi', 'off'])
         # Connect to the provided WiFi network
         
         time.sleep(5)  # Wait for 5 seconds before attempting to connect
-        subprocess.run(['nmcli', 'device', 'wifi', 'connect', ssid, 'password', password])
-        
-
-        # Exit the script
-        sys.exit("WiFi credentials received and connected to the network.")
+        run_command(['nmcli', 'device', 'wifi', 'connect', ssid, 'password', password])
         
         return 'WiFi credentials received. Connecting to the network.'
 
-
     # Start the access point
-    subprocess.run(['nmcli', 'radio', 'wifi', 'on'])
+    run_command(['nmcli', 'radio', 'wifi', 'on'])
     time.sleep(5)  # Wait for 5 seconds before starting the access point
-    subprocess.run(['nmcli', 'device', 'wifi', 'hotspot', 'ifname', 'wlan0', 'ssid', 'MyAccessPoint', 'password', '12345678'])
+    run_command(['nmcli', 'device', 'wifi', 'hotspot', 'ifname', 'wlan0', 'ssid', 'MyAccessPoint', 'password', '12345678'])
 
-    # Run the Flask app
-    app.run(host='0.0.0.0', port=80)
+    # Run the Flask app in a separate thread
+    def run_flask():
+        app.run(host='0.0.0.0', port=80, threaded=True)
+
+    flask_thread = Thread(target=run_flask)
+    flask_thread.start()
